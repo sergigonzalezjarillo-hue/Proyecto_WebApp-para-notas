@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&display=swap" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Lienzo principal donde irAn posicionados los post-its -->
+    <main id="canvas">
+        <!-- Ejemplo estAtico visual de un post-it para pruebas -->
+        <div class="post-it yellow" style="top: 100px; left: 50px; transform: rotate(-2deg);">
+            <div class="post-it-content">¡Bienvenido a tu pizarra interactiva! Prueba a arrastrarme o haz doble toque.</div>
+            <div class="post-it-footer">Hoy, 08:25</div>
+        </div>
+    </main>
+
+    <!-- Boton de Accion Flotante -->
+    <button id="fab" aria-label="Añadir Post-it">+</button>
+
+    <!-- Modal de Creacion / Edicion (Estructura Base) -->
+    <div id="note-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title" id="modal-title">Nuevo Post-it</h3>
+            <textarea class="modal-textarea" id="note-text" placeholder="Escribe tu nota aqui..."></textarea>
+            
+            <div class="color-picker-container" id="color-picker">
+                <div class="color-option yellow selected" data-color="yellow"></div>
+                <div class="color-option pink" data-color="pink"></div>
+                <div class="color-option blue" data-color="blue"></div>
+                <div class="color-option green" data-color="green"></div>
+                <div class="color-option purple" data-color="purple"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="modal-save">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmacion de Borrado -->
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title">¿Eliminar nota?</h3>
+            <p class="modal-desc">Esta acción eliminará el post-it de forma permanente.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="delete-cancel">Cancelar</button>
+                <button class="btn btn-danger" id="delete-confirm">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/index.js"></script>
+    
+</body>
+</html>
