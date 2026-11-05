@@ -1,40 +1,36 @@
 /**
  * Pizarra de Post-its Interactivos (CRUD Completo, Gestos y Firebase)
+ * Funciona con ratón y con táctil (Pointer Events).
  */
 
 // 1. Importaciones de módulos de Firebase CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { 
-    getFirestore, 
-    collection, 
-    onSnapshot, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    doc 
+import {
+    getFirestore,
+    collection,
+    onSnapshot,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    doc
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-// 2. Configuración de tu proyecto Firebase (Sustituye por tus claves)
-const firebaseConfig = {
-***REMOVED***
-  authDomain: "pizarrainteractiva-1fc36.firebaseapp.com",
-  projectId: "pizarrainteractiva-1fc36",
-  storageBucket: "pizarrainteractiva-1fc36.firebasestorage.app",
-  messagingSenderId: "164631583161",
-  appId: "1:164631583161:web:828d8bdc237f2262b13e68",
-  measurementId: "G-6C1HNQEP0Y"
-***REMOVED***
+// 2. Configuración de tu proyecto Firebase
+import { firebaseConfig } from "./firebase_config.js";
 
 // Inicializar Firebase y Firestore
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const postitsRef = collection(db, "posits");
+
+// Nombre de la colección: UNO SOLO para todo el archivo
+const COLECCION = "postits";
+const postitsRef = collection(db, COLECCION);
 
 document.addEventListener('DOMContentLoaded', () => {
     // Referencias del DOM
     const canvas = document.getElementById('canvas');
     const fab = document.getElementById('fab');
-    
+
     // Modales
     const noteModal = document.getElementById('note-modal');
     const modalTitle = document.getElementById('modal-title');
@@ -48,33 +44,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteConfirm = document.getElementById('delete-confirm');
 
     // Estado local
-    let currentEditingNote = null; // Guardará el elemento del DOM si editamos
+    let currentEditingNote = null; // Elemento del DOM si estamos editando
     let selectedColor = 'yellow';
     let notePendingDelete = null;
 
-    // ======================================================
+   
     // 3. SINCRONIZACIÓN EN TIEMPO REAL (READ DE FIREBASE)
-    // ======================================================
-    onSnapshot(postitsRef, (snapshot) => {
-        // Limpiamos el lienzo antes de renderizar los cambios
-        canvas.innerHTML = '';
+    
+    onSnapshot(
+        postitsRef,
+        (snapshot) => {
+            // Limpiamos el lienzo antes de renderizar los cambios
+            canvas.innerHTML = '';
 
-        snapshot.forEach((docSnapshot) => {
-            const data = docSnapshot.data();
-            renderNoteOnCanvas({
-                id: docSnapshot.id,
-                text: data.texto || data.text || '',
-                color: data.color || 'yellow',
-                x: data.coordenadaX ?? data.x ?? 100,
-                y: data.coordenadaY ?? data.y ?? 100,
-                fechaCreacion: data.fechaCreacion
+            snapshot.forEach((docSnapshot) => {
+                const data = docSnapshot.data();
+                renderNoteOnCanvas({
+                    id: docSnapshot.id,
+                    text: data.texto || data.text || '',
+                    color: data.color || 'yellow',
+                    x: data.coordenadaX ?? data.x ?? 100,
+                    y: data.coordenadaY ?? data.y ?? 100,
+                    fechaCreacion: data.fechaCreacion
+                });
             });
-        });
-    });
+        },
+        (error) => {
+            // Si Firestore falla (reglas, red...) lo veremos en consola
+            console.error("Error al leer de Firebase:", error);
+        }
+    );
 
-    // ======================================================
+    
     // 4. CREAR (CREATE) Y ACTUALIZAR (UPDATE) EN FIREBASE
-    // ======================================================
+   
 
     // Abrir modal de creación (FAB)
     fab.addEventListener('click', () => {
@@ -116,8 +119,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentEditingNote) {
                 // ACTUALIZAR (Update) texto y color en Firebase
                 const docId = currentEditingNote.dataset.id;
-                const noteDocRef = doc(db, "postits", docId);
-                
+                const noteDocRef = doc(db, COLECCION, docId);
+
                 await updateDoc(noteDocRef, {
                     texto: textValue,
                     color: selectedColor
@@ -144,9 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ======================================================
-    // 5. RENDERIZADO Y CONTROLADORES TÁCTILES EN EL DOM
-    // ======================================================
+    
+    // 5. RENDERIZADO Y GESTOS (RATÓN + TÁCTIL)
+   
     function renderNoteOnCanvas(data) {
         const note = document.createElement('div');
         note.className = `post-it ${data.color}`;
@@ -154,57 +157,83 @@ document.addEventListener('DOMContentLoaded', () => {
         note.style.top = `${data.y}px`;
         note.dataset.id = data.id;
 
-        // Formato de fecha
-        const fechaStr = data.fechaCreacion 
-            ? new Date(data.fechaCreacion).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-            : 'Hoy';
+        // Formato de fecha: "Mon 13, 9:43"
+        let fechaStr = 'Hoy';
+
+        if (data.fechaCreacion) {
+            const fecha = new Date(data.fechaCreacion);
+            const dia = fecha.toLocaleDateString('en-US', { weekday: 'short' }); // Mon
+            const numero = fecha.getDate();                                      // 13
+            const horas = fecha.getHours();                                      // 9
+            const minutos = String(fecha.getMinutes()).padStart(2, '0');         // 43
+
+            fechaStr = `${dia} ${numero}, ${horas}:${minutos}`;
+        }
 
         note.innerHTML = `
             <div class="post-it-content">${escapeHTML(data.text)}</div>
             <div class="post-it-footer">${fechaStr}</div>
         `;
 
-        initTouchGestures(note);
+        initGestures(note);
         canvas.appendChild(note);
     }
 
-    // Lógica de Gestos Táctiles (Drag, Doble Tap, Swipe)
-    function initTouchGestures(note) {
+    // Guarda la posición actual de una nota en Firebase
+    async function savePosition(note) {
+        try {
+            await updateDoc(doc(db, COLECCION, note.dataset.id), {
+                coordenadaX: note.offsetLeft,
+                coordenadaY: note.offsetTop
+            });
+        } catch (err) {
+            console.error("Error al actualizar posición:", err);
+        }
+    }
+
+    // Gestos: arrastrar, doble toque/clic (editar) y swipe rápido (borrar)
+    function initGestures(note) {
         let startX = 0, startY = 0;
         let initialLeft = 0, initialTop = 0;
+        let isPressed = false;
         let isDragging = false;
         let lastTapTime = 0;
         let touchStartTime = 0;
-        let deltaX = 0;
+        let deltaX = 0, deltaY = 0;
 
-        note.addEventListener('touchstart', (e) => {
-            if (e.touches.length > 1) return;
+        note.addEventListener('pointerdown', (e) => {
+            // Solo botón principal del ratón (o un dedo / lápiz)
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
 
-            const touch = e.touches[0];
-            startX = touch.clientX;
-            startY = touch.clientY;
+            isPressed = true;
+            isDragging = false;
+            startX = e.clientX;
+            startY = e.clientY;
             initialLeft = note.offsetLeft;
             initialTop = note.offsetTop;
-
-            isDragging = false;
             touchStartTime = Date.now();
             deltaX = 0;
+            deltaY = 0;
 
-            // Detección de Doble Toque (Update)
+            // Detección de doble toque / doble clic (Update)
             const currentTime = Date.now();
             if (currentTime - lastTapTime < 300 && currentTime - lastTapTime > 0) {
-                e.preventDefault();
+                isPressed = false;
+                lastTapTime = 0;
                 openEditModal(note);
                 return;
             }
             lastTapTime = currentTime;
-        }, { passive: false });
 
-        note.addEventListener('touchmove', (e) => {
-            if (e.touches.length > 1) return;
-            const touch = e.touches[0];
-            const moveX = touch.clientX - startX;
-            const moveY = touch.clientY - startY;
+            // Seguimos al puntero aunque salga de la nota
+            note.setPointerCapture(e.pointerId);
+        });
+
+        note.addEventListener('pointermove', (e) => {
+            if (!isPressed) return;
+
+            const moveX = e.clientX - startX;
+            const moveY = e.clientY - startY;
 
             if (!isDragging && (Math.abs(moveX) > 8 || Math.abs(moveY) > 8)) {
                 isDragging = true;
@@ -216,12 +245,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 note.style.left = `${initialLeft + moveX}px`;
                 note.style.top = `${initialTop + moveY}px`;
                 deltaX = moveX;
+                deltaY = moveY;
             }
+        });
 
-            e.preventDefault();
-        }, { passive: false });
-
-        note.addEventListener('touchend', async () => {
+        note.addEventListener('pointerup', async () => {
+            if (!isPressed) return;
+            isPressed = false;
             if (!isDragging) return;
 
             const elapsedTime = Date.now() - touchStartTime;
@@ -229,24 +259,20 @@ document.addEventListener('DOMContentLoaded', () => {
             note.style.zIndex = 1;
             note.style.transition = 'transform 0.2s ease, left 0.3s ease, top 0.3s ease';
 
-            // Evaluar Swipe (Borrar)
-            if (Math.abs(deltaX) > 90 && elapsedTime < 300) {
+            // Swipe horizontal rápido -> flujo de borrado
+            if (Math.abs(deltaX) > 90 && Math.abs(deltaY) < 60 && elapsedTime < 500) {
                 triggerDeleteFlow(note, deltaX);
             } else {
-                // Actualizar coordenadas en Firebase tras arrastrar
-                const finalX = note.offsetLeft;
-                const finalY = note.offsetTop;
-                const noteDocRef = doc(db, "postits", note.dataset.id);
-                
-                try {
-                    await updateDoc(noteDocRef, {
-                        coordenadaX: finalX,
-                        coordenadaY: finalY
-                    });
-                } catch (err) {
-                    console.error("Error al actualizar posición:", err);
-                }
+                // Guardar la nueva posición tras arrastrar
+                await savePosition(note);
             }
+        });
+
+        // Si el sistema cancela el gesto, soltamos la nota donde esté
+        note.addEventListener('pointercancel', () => {
+            isPressed = false;
+            isDragging = false;
+            note.style.zIndex = 1;
         });
     }
 
@@ -268,9 +294,9 @@ document.addEventListener('DOMContentLoaded', () => {
         noteText.focus();
     }
 
-    // ======================================================
+   
     // 6. BORRAR (DELETE) Y CONFIRMACIÓN
-    // ======================================================
+   
     function triggerDeleteFlow(note, direction) {
         notePendingDelete = note;
         const slideDistance = direction > 0 ? window.innerWidth : -window.innerWidth;
@@ -279,12 +305,14 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteModal.classList.add('active');
     }
 
-    // Cancelar borrado -> Restitución fluida de la nota
-    deleteCancel.addEventListener('click', () => {
+    // Cancelar borrado -> la nota vuelve y se guarda donde quedó
+    deleteCancel.addEventListener('click', async () => {
         if (notePendingDelete) {
-            notePendingDelete.style.transform = 'rotate(0deg)';
-            notePendingDelete.style.opacity = '1';
+            const note = notePendingDelete;
             notePendingDelete = null;
+            note.style.transform = 'rotate(0deg)';
+            note.style.opacity = '1';
+            await savePosition(note);
         }
         deleteModal.classList.remove('active');
     });
@@ -294,9 +322,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (notePendingDelete) {
             const docId = notePendingDelete.dataset.id;
             deleteModal.classList.remove('active');
-            
+
             try {
-                await deleteDoc(doc(db, "postits", docId));
+                await deleteDoc(doc(db, COLECCION, docId));
             } catch (err) {
                 console.error("Error al eliminar nota:", err);
             } finally {
@@ -306,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function escapeHTML(str) {
-        return str.replace(/[&<>'"]/g, 
+        return str.replace(/[&<>'"]/g,
             tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
         );
     }
